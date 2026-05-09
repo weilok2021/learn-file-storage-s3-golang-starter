@@ -3,7 +3,10 @@ package main
 import (
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -40,10 +43,36 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	defer file.Close()
+
 	mediaType := header.Header.Get("Content-Type")
-	imgData, err := io.ReadAll(file)
+	mediaType, _, err = mime.ParseMediaType(mediaType)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Unable to read image data in file", err)
+		respondWithError(w, http.StatusInternalServerError, "Failed to parse content type", err)
+		return
+	}
+
+	fmt.Println("Content type: " + mediaType)
+
+	if mediaType != "image/jpeg" && mediaType != "image/png" {
+		respondWithError(w, http.StatusBadRequest, "Invalid file media type", err)
+		return
+	}
+
+	// fileExtensions[0] = .jpg, .png and etc..
+	fileExtensions, _ := mime.ExtensionsByType(mediaType)
+	fPath := filepath.Join(cfg.assetsRoot, videoIDString+fileExtensions[0])
+	fmt.Println(fPath)
+
+	// create new file to store uploaded file locally
+	newFile, err := os.Create(fPath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to create file", err)
+		return
+	}
+
+	_, err = io.Copy(newFile, file)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Unable to copy uploaded filedata into created file", err)
 		return
 	}
 
@@ -56,18 +85,15 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	// check video ownership
 	if userID != metadata.UserID {
 		respondWithError(w, http.StatusUnauthorized, "Authorization Error: User does not own this video", err)
+		return
 	}
-	thumbnail := thumbnail{
-		data:      imgData,
-		mediaType: mediaType,
-	}
-	// Add the thumbnail to the global map, using the video's ID as the key
-	videoThumbnails[videoID] = thumbnail
-	url := fmt.Sprintf("http://localhost:8091/api/thumbnails/%s", videoIDString)
+
+	url := fmt.Sprintf("http://localhost:8091/assets/%s%s", videoIDString, fileExtensions[0])
 	metadata.ThumbnailURL = &url
 	err = cfg.db.UpdateVideo(metadata)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Unable to update video's thumbnail", err)
+		return
 	}
 	respondWithJSON(w, http.StatusOK, metadata)
 }
