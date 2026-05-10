@@ -51,8 +51,6 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	fmt.Println("Content type: " + mediaType)
-
 	if mediaType != "image/jpeg" && mediaType != "image/png" {
 		respondWithError(w, http.StatusBadRequest, "Invalid file media type", err)
 		return
@@ -78,7 +76,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 
 	metadata, err := cfg.db.GetVideo(videoID)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Unable to read video meta data from db", err)
+		respondWithError(w, http.StatusInternalServerError, "Unable to read video meta data from db", err)
 		return
 	}
 
